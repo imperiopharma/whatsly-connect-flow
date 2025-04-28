@@ -11,8 +11,7 @@ export function ConnectionStatus() {
   
   const handleConnect = () => {
     setStatus('connecting');
-    // Em um cenário real, aqui seria iniciada a conexão com o WhatsApp
-    // e o QR code seria exibido, mas simulamos apenas para demonstração
+    // Simulação da conexão - em um cenário real, aqui seria o processo de geração do QR code
     setTimeout(() => setStatus('connected'), 3000);
   };
   
@@ -48,7 +47,7 @@ export function ConnectionStatus() {
       <CardContent>
         <div className="flex flex-col md:flex-row gap-6 items-center">
           <div className="text-center md:text-left md:flex-1">
-            <h3 className="text-lg font-medium mb-2">WhatsApp Business API</h3>
+            <h3 className="text-lg font-medium mb-2">WhatsApp</h3>
             {status === 'connected' ? (
               <div className="space-y-4">
                 <p>Você está conectado com o número:</p>
