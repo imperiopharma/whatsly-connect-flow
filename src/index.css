@@ -1,4 +1,3 @@
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
@@ -100,27 +99,27 @@
 
 @layer components {
   .whatsly-layout {
-    @apply flex min-h-screen w-full;
+    @apply flex min-h-screen w-full overflow-hidden;
   }
   
   .whatsly-main-content {
-    @apply flex-1 overflow-y-auto;
+    @apply flex-1 flex flex-col min-h-screen overflow-hidden;
   }
   
   .whatsly-panel {
-    @apply bg-card rounded-lg border shadow-sm p-6;
+    @apply bg-card rounded-lg border shadow-sm p-4 lg:p-6;
   }
   
   .whatsly-section-title {
-    @apply text-2xl font-semibold tracking-tight mb-6;
+    @apply text-xl md:text-2xl font-semibold tracking-tight mb-4 lg:mb-6;
   }
   
   .whatsly-dashboard-grid {
-    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6;
+    @apply grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6;
   }
   
   .whatsly-stat-card {
-    @apply flex flex-col bg-card rounded-lg border p-6 space-y-2;
+    @apply flex flex-col bg-card rounded-lg border p-4 lg:p-6 space-y-2;
   }
   
   .whatsly-fade-in {
@@ -132,7 +131,7 @@
   }
 
   .whatsly-conversation-item {
-    @apply flex items-center gap-3 py-3 px-4 hover:bg-accent/50 rounded-md transition-colors cursor-pointer;
+    @apply flex items-center gap-3 py-2 px-3 md:py-3 md:px-4 hover:bg-accent/50 rounded-md transition-colors cursor-pointer;
   }
   
   .whatsly-conversation-active {
