@@ -104,9 +104,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             Conectado ao WhatsApp com o número:
             <div className="text-sm text-sidebar-foreground mt-1">+55 (11) 98765-4321</div>
           </div>
-          <Button variant="outline" className="w-full bg-sidebar-background border-sidebar-border text-sidebar-foreground hover:bg-sidebar-accent/80">
-            Desconectar
-          </Button>
+          <NavLink to="/settings" className="w-full">
+            <Button variant="outline" className="w-full bg-sidebar-background border-sidebar-border text-sidebar-foreground hover:bg-sidebar-accent/80">
+              Gerenciar Conexão
+            </Button>
+          </NavLink>
         </div>
       </div>
     </div>
