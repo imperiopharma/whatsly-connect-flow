@@ -11,14 +11,18 @@ interface ChatPreviewProps {
     unread: number;
     status: "active" | "ended";
   };
+  isActive: boolean;
+  onClick: () => void;
 }
 
-export function ChatPreview({ chat }: ChatPreviewProps) {
+export function ChatPreview({ chat, isActive, onClick }: ChatPreviewProps) {
   return (
     <button
+      onClick={onClick}
       className={cn(
         "w-full p-3 rounded-lg text-left transition-colors hover:bg-accent group",
-        chat.status === "active" && "bg-accent/50"
+        isActive && "bg-accent",
+        chat.status === "active" && !isActive && "bg-accent/50"
       )}
     >
       <div className="flex items-start gap-3">

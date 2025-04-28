@@ -11,6 +11,28 @@ export interface DBSchema {
       status: "active" | "inactive";
     };
   };
+  chats: {
+    key: string;
+    value: {
+      id: string;
+      name: string;
+      phone: string;
+      lastMessage: string;
+      timestamp: string;
+      unread: number;
+      status: "active" | "ended";
+    };
+  };
+  messages: {
+    key: string;
+    value: {
+      id: string;
+      content: string;
+      timestamp: string;
+      type: "sent" | "received";
+      chatId: string;
+    };
+  };
 }
 
 class DatabaseService {
@@ -34,6 +56,13 @@ class DatabaseService {
         if (!db.objectStoreNames.contains('contacts')) {
           db.createObjectStore('contacts', { keyPath: 'id' });
         }
+        if (!db.objectStoreNames.contains('chats')) {
+          db.createObjectStore('chats', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('messages')) {
+          const messagesStore = db.createObjectStore('messages', { keyPath: 'id' });
+          messagesStore.createIndex('chatId', 'chatId', { unique: false });
+        }
       };
     });
   }
@@ -45,6 +74,24 @@ class DatabaseService {
       const transaction = this.db!.transaction(storeName, 'readonly');
       const store = transaction.objectStore(storeName);
       const request = store.getAll();
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+  }
+
+  async getAllFrom<T extends keyof DBSchema>(
+    storeName: T, 
+    indexName: string, 
+    value: any
+  ): Promise<DBSchema[T]['value'][]> {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(storeName, 'readonly');
+      const store = transaction.objectStore(storeName);
+      const index = store.index(indexName);
+      const request = index.getAll(value);
 
       request.onerror = () => reject(request.error);
       request.onsuccess = () => resolve(request.result);

@@ -4,9 +4,17 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatPreview } from "./ChatPreview";
+import { useChats } from "@/hooks/useChats";
 
 export function ChatList() {
   const [search, setSearch] = useState("");
+  const { chats, activeChat, setActiveChat, loading } = useChats();
+  
+  // Filtra as conversas com base na pesquisa
+  const filteredChats = chats.filter(chat => 
+    chat.name.toLowerCase().includes(search.toLowerCase()) ||
+    chat.phone.includes(search)
+  );
 
   return (
     <div className="w-80 flex-shrink-0 border rounded-lg bg-card">
@@ -23,33 +31,35 @@ export function ChatList() {
       </div>
       <ScrollArea className="h-[calc(100vh-12rem)]">
         <div className="p-2 space-y-2">
-          {dummyChats.map((chat) => (
-            <ChatPreview key={chat.id} chat={chat} />
-          ))}
+          {loading ? (
+            // Placeholder de carregamento
+            Array(3).fill(0).map((_, i) => (
+              <div key={i} className="w-full p-3 rounded-lg">
+                <div className="flex items-start gap-3 animate-pulse">
+                  <div className="w-10 h-10 rounded-full bg-muted"></div>
+                  <div className="flex-1">
+                    <div className="h-4 bg-muted rounded w-24 mb-2"></div>
+                    <div className="h-3 bg-muted rounded w-32"></div>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : filteredChats.length > 0 ? (
+            filteredChats.map((chat) => (
+              <ChatPreview 
+                key={chat.id} 
+                chat={chat} 
+                isActive={chat.id === activeChat}
+                onClick={() => setActiveChat(chat.id)} 
+              />
+            ))
+          ) : (
+            <p className="text-center py-4 text-muted-foreground">
+              {search ? "Nenhuma conversa encontrada" : "Nenhuma conversa disponível"}
+            </p>
+          )}
         </div>
       </ScrollArea>
     </div>
   );
 }
-
-const dummyChats = [
-  {
-    id: "1",
-    name: "João Silva",
-    phone: "+55 11 98765-4321",
-    lastMessage: "Olá, gostaria de saber mais sobre os serviços",
-    timestamp: "10:30",
-    unread: 2,
-    status: "active" as const
-  },
-  {
-    id: "2",
-    name: "Maria Oliveira",
-    phone: "+55 11 91234-5678",
-    lastMessage: "Obrigado pelo atendimento!",
-    timestamp: "09:45",
-    unread: 0,
-    status: "ended" as const
-  },
-  // Mais chats para demonstração
-];
