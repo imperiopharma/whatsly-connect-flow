@@ -40,7 +40,7 @@ const dummyChats = [
     lastMessage: "Olá, gostaria de saber mais sobre os serviços",
     timestamp: "10:30",
     unread: 2,
-    status: "active"
+    status: "active" as const
   },
   {
     id: "2",
@@ -49,7 +49,7 @@ const dummyChats = [
     lastMessage: "Obrigado pelo atendimento!",
     timestamp: "09:45",
     unread: 0,
-    status: "ended"
+    status: "ended" as const
   },
   // Mais chats para demonstração
 ];

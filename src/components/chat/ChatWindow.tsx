@@ -53,13 +53,13 @@ const dummyMessages = [
     id: "1",
     content: "Olá, gostaria de saber mais sobre os serviços",
     timestamp: "10:30",
-    type: "received"
+    type: "received" as const
   },
   {
     id: "2",
     content: "Olá! Claro, como posso ajudar?",
     timestamp: "10:31",
-    type: "sent"
+    type: "sent" as const
   },
   // Mais mensagens para demonstração
 ];
