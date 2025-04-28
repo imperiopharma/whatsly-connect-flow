@@ -1,38 +1,24 @@
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { User, UserPlus, Tag } from "lucide-react";
-
-interface Contact {
-  id: string;
-  name: string;
-  phone: string;
-  lastContact: string;
-  tags: string[];
-  status: "active" | "inactive";
-}
-
-const contacts: Contact[] = [
-  {
-    id: "1",
-    name: "João Silva",
-    phone: "+55 11 98765-4321",
-    lastContact: "2024-04-28",
-    tags: ["cliente", "vip"],
-    status: "active"
-  },
-  {
-    id: "2",
-    name: "Maria Oliveira",
-    phone: "+55 11 91234-5678",
-    lastContact: "2024-04-27",
-    tags: ["lead"],
-    status: "active"
-  }
-];
+import { User, UserPlus, Tag, Trash2, Edit } from "lucide-react";
+import { useContacts } from "@/hooks/useContacts";
+import { useToast } from "@/hooks/use-toast";
 
 export function ContactList() {
+  const { contacts, deleteContact } = useContacts();
+  const { toast } = useToast();
+
+  const handleDelete = (id: string) => {
+    deleteContact(id);
+    toast({
+      title: "Contato excluído",
+      description: "O contato foi removido com sucesso."
+    });
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -66,9 +52,20 @@ export function ContactList() {
                   </Badge>
                 ))}
               </div>
-              <Button variant="outline" size="sm">
-                Ver Detalhes
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm">
+                  <Edit className="h-4 w-4 mr-2" />
+                  Editar
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  onClick={() => handleDelete(contact.id)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Excluir
+                </Button>
+              </div>
             </div>
           </div>
         ))}
