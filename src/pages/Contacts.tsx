@@ -1,12 +1,13 @@
 
 import PageLayout from "@/components/common/PageLayout";
 import { ContactList } from "@/components/contacts/ContactList";
+import { WhatsAppConnection } from "@/components/whatsapp/WhatsAppConnection";
 
 export default function Contacts() {
   return (
     <PageLayout>
-      <div className="whatsly-fade-in space-y-6">
-        <h1 className="whatsly-section-title">Contatos</h1>
+      <div className="space-y-6">
+        <WhatsAppConnection />
         <ContactList />
       </div>
     </PageLayout>
