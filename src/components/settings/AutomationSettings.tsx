@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,7 +70,6 @@ export function AutomationSettings() {
     
     setLoading(true);
     
-    // Simulação de salvamento (em produção, seria uma chamada à API)
     setTimeout(() => {
       setAutomations(automations.map(item => 
         item.id === editingAutomation.id ? editingAutomation : item
@@ -95,41 +93,43 @@ export function AutomationSettings() {
             Gerencie respostas automáticas e fluxos de mensagens.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {automations.map((automation) => (
-            <div 
-              key={automation.id}
-              className="flex items-center justify-between p-3 border rounded-md"
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${automation.active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                  {automation.icon}
+        <CardContent className="space-y-4 overflow-x-auto">
+          <div className="grid gap-4">
+            {automations.map((automation) => (
+              <div 
+                key={automation.id}
+                className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-lg space-y-3 sm:space-y-0"
+              >
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${automation.active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                    {automation.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{automation.name}</p>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {automation.triggers.slice(0, 3).join(", ")}{automation.triggers.length > 3 ? "..." : ""}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium">{automation.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {automation.triggers.slice(0, 3).join(", ")}{automation.triggers.length > 3 ? "..." : ""}
-                  </p>
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                  <Switch 
+                    checked={automation.active} 
+                    onCheckedChange={() => handleToggleActive(automation.id)}
+                  />
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleEditAutomation(automation)}
+                  >
+                    Editar
+                  </Button>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <Switch 
-                  checked={automation.active} 
-                  onCheckedChange={() => handleToggleActive(automation.id)}
-                />
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => handleEditAutomation(automation)}
-                >
-                  Editar
-                </Button>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </CardContent>
         <CardFooter>
-          <Button variant="outline">
+          <Button variant="outline" className="w-full sm:w-auto">
             Adicionar Nova Automação
           </Button>
         </CardFooter>
@@ -143,13 +143,14 @@ export function AutomationSettings() {
               Configure os detalhes da automação selecionada.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="name">Nome</Label>
               <Input
                 id="name"
                 value={editingAutomation.name}
                 onChange={(e) => setEditingAutomation({...editingAutomation, name: e.target.value})}
+                className="max-w-xl"
               />
             </div>
             
@@ -162,6 +163,7 @@ export function AutomationSettings() {
                   ...editingAutomation, 
                   triggers: e.target.value.split(",").map(item => item.trim())
                 })}
+                className="max-w-xl"
               />
             </div>
             
@@ -172,6 +174,7 @@ export function AutomationSettings() {
                 rows={5}
                 value={editingAutomation.responses}
                 onChange={(e) => setEditingAutomation({...editingAutomation, responses: e.target.value})}
+                className="max-w-xl resize-y min-h-[100px]"
               />
             </div>
             
@@ -184,9 +187,11 @@ export function AutomationSettings() {
               <Label htmlFor="active">Automação ativa</Label>
             </div>
           </CardContent>
-          <CardFooter className="flex justify-between">
-            <Button variant="outline" onClick={() => setEditingAutomation(null)}>Cancelar</Button>
-            <Button onClick={handleSaveAutomation} disabled={loading}>
+          <CardFooter className="flex flex-col sm:flex-row gap-3 sm:justify-end">
+            <Button variant="outline" onClick={() => setEditingAutomation(null)} className="w-full sm:w-auto">
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveAutomation} disabled={loading} className="w-full sm:w-auto">
               {loading ? "Salvando..." : "Salvar Alterações"}
             </Button>
           </CardFooter>
