@@ -1,5 +1,8 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useToast } from './use-toast';
+import { api } from '@/services/api';
+import { API_CONFIG } from '@/config/api';
 import { db } from '../services/db';
 
 export interface ChatMessage {
@@ -25,149 +28,126 @@ export function useChats() {
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const { toast } = useToast();
 
-  // Carregar conversas
+  // Carrega conversas
   useEffect(() => {
-    const loadChats = async () => {
-      try {
-        const savedChats = await db.getAll('chats');
-        
-        if (savedChats.length > 0) {
-          setChats(savedChats);
-          if (!activeChat && savedChats.length > 0) {
-            setActiveChat(savedChats[0].id);
-          }
-        } else {
-          // Dados iniciais de exemplo
-          const initialChats: Chat[] = [
-            {
-              id: "1",
-              name: "João Silva",
-              phone: "+55 11 98765-4321",
-              lastMessage: "Olá, gostaria de saber mais sobre os serviços",
-              timestamp: "10:30",
-              unread: 2,
-              status: "active"
-            },
-            {
-              id: "2",
-              name: "Maria Oliveira",
-              phone: "+55 11 91234-5678",
-              lastMessage: "Obrigado pelo atendimento!",
-              timestamp: "09:45",
-              unread: 0,
-              status: "ended"
-            },
-            {
-              id: "3",
-              name: "Carlos Mendes",
-              phone: "+55 11 99876-5432",
-              lastMessage: "Qual o prazo de entrega?",
-              timestamp: "Ontem",
-              unread: 1,
-              status: "active"
-            }
-          ];
-          
-          // Adiciona cada conversa inicial ao banco
-          for (const chat of initialChats) {
-            await db.add('chats', chat);
-          }
-          
-          setChats(initialChats);
-          
-          if (!activeChat) {
-            setActiveChat(initialChats[0].id);
-          }
-        }
-      } catch (error) {
-        console.error('Erro ao carregar conversas:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadChats();
+  }, []);
+
+  // Carregar mensagens quando o chat ativo mudar
+  useEffect(() => {
+    if (activeChat) {
+      loadMessages(activeChat);
+    }
   }, [activeChat]);
 
-  // Carregar mensagens do chat ativo
-  useEffect(() => {
-    const loadMessages = async () => {
-      if (!activeChat) return;
-
+  // Função para carregar conversas
+  const loadChats = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Primeiro tenta carregar do banco de dados local
+      const localChats = await db.getAll('chats');
+      
+      if (localChats.length > 0) {
+        setChats(localChats);
+        if (!activeChat && localChats.length > 0) {
+          setActiveChat(localChats[0].id);
+        }
+      }
+      
+      // Depois tenta carregar do servidor
       try {
-        const chatMessages = await db.getAllFrom('messages', 'chatId', activeChat);
+        const serverChats = await api.get(API_CONFIG.ENDPOINTS.CHATS.LIST);
         
-        if (chatMessages.length > 0) {
-          setMessages(chatMessages);
-        } else {
-          // Mensagens iniciais de exemplo para este chat
-          const initialMessages: ChatMessage[] = [
-            {
-              id: "1",
-              content: "Olá, gostaria de saber mais sobre os serviços",
-              timestamp: "10:30",
-              type: "received",
-              chatId: activeChat
-            },
-            {
-              id: "2",
-              content: "Olá! Claro, como posso ajudar?",
-              timestamp: "10:31",
-              type: "sent",
-              chatId: activeChat
-            },
-            {
-              id: "3",
-              content: "Vocês têm pacote para pequenas empresas?",
-              timestamp: "10:32",
-              type: "received",
-              chatId: activeChat
-            }
-          ];
-          
-          // Adiciona cada mensagem inicial ao banco
-          for (const message of initialMessages) {
-            await db.add('messages', message);
+        if (serverChats && serverChats.length > 0) {
+          // Atualiza o banco local com as conversas do servidor
+          for (const chat of serverChats) {
+            await db.update('chats', chat);
           }
           
-          setMessages(initialMessages);
-        }
-
-        // Marcar mensagens como lidas
-        if (activeChat) {
-          const chat = chats.find(c => c.id === activeChat);
-          if (chat && chat.unread > 0) {
-            const updatedChat = { ...chat, unread: 0 };
-            await db.update('chats', updatedChat);
-            setChats(prev => prev.map(c => c.id === activeChat ? updatedChat : c));
+          setChats(serverChats);
+          
+          if (!activeChat && serverChats.length > 0) {
+            setActiveChat(serverChats[0].id);
           }
         }
       } catch (error) {
-        console.error('Erro ao carregar mensagens:', error);
+        console.log('Usando chats do cache local. Erro ao buscar do servidor:', error);
+        // Não exibe toast aqui pois já estamos usando os chats locais
       }
-    };
+    } catch (error) {
+      console.error('Erro ao carregar conversas:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar as conversas",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [activeChat, toast]);
 
-    loadMessages();
-  }, [activeChat, chats]);
+  // Função para carregar mensagens de um chat
+  const loadMessages = useCallback(async (chatId: string) => {
+    setLoadingMessages(true);
+    try {
+      // Primeiro tenta carregar do banco de dados local
+      const localMessages = await db.getAllFrom('messages', 'chatId', chatId);
+      
+      if (localMessages.length > 0) {
+        setMessages(localMessages);
+      }
+      
+      // Depois tenta carregar do servidor
+      try {
+        const serverMessages = await api.get(`${API_CONFIG.ENDPOINTS.CHATS.MESSAGES}/${chatId}/messages`);
+        
+        if (serverMessages && serverMessages.length > 0) {
+          // Atualiza o banco local com as mensagens do servidor
+          for (const message of serverMessages) {
+            await db.update('messages', message);
+          }
+          
+          setMessages(serverMessages);
+        }
+        
+        // Marca as mensagens como lidas
+        if (chatId) {
+          const chat = chats.find(c => c.id === chatId);
+          if (chat && chat.unread > 0) {
+            const updatedChat = { ...chat, unread: 0 };
+            await api.put(`${API_CONFIG.ENDPOINTS.CHATS.LIST}/${chatId}/read`);
+            await db.update('chats', updatedChat);
+            setChats(prev => prev.map(c => c.id === chatId ? updatedChat : c));
+          }
+        }
+      } catch (error) {
+        console.log('Usando mensagens do cache local. Erro ao buscar do servidor:', error);
+        // Não exibe toast aqui pois já estamos usando as mensagens locais
+      }
+    } catch (error) {
+      console.error('Erro ao carregar mensagens:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar as mensagens",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, [chats, toast]);
 
   // Enviar nova mensagem
-  const sendMessage = async (content: string) => {
+  const sendMessage = useCallback(async (content: string) => {
     if (!activeChat || !content.trim()) return;
     
-    const now = new Date();
-    const timestamp = now.getHours().toString().padStart(2, '0') + ':' + 
-                      now.getMinutes().toString().padStart(2, '0');
-    
-    const newMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      content,
-      timestamp,
-      type: "sent",
-      chatId: activeChat
-    };
-    
     try {
+      // Envia a mensagem para o servidor
+      const newMessage = await api.post(`${API_CONFIG.ENDPOINTS.CHATS.SEND}/${activeChat}/messages`, { content });
+      
+      // Adiciona ao banco local
       await db.add('messages', newMessage);
       
       // Atualiza a lista de mensagens
@@ -179,54 +159,23 @@ export function useChats() {
         const chatUpdate = {
           ...updatedChat,
           lastMessage: content,
-          timestamp
+          timestamp: newMessage.timestamp
         };
         await db.update('chats', chatUpdate);
         setChats(prev => prev.map(c => c.id === activeChat ? chatUpdate : c));
       }
-
-      // Simula uma resposta automática após um breve atraso
-      setTimeout(async () => {
-        const autoResponses = [
-          "Obrigado por sua mensagem! Vamos analisar.",
-          "Recebi sua mensagem. Responderemos em breve.",
-          "Agradeço o contato! Estamos processando sua solicitação."
-        ];
-        
-        const responseIdx = Math.floor(Math.random() * autoResponses.length);
-        const responseTime = new Date();
-        const responseTimestamp = responseTime.getHours().toString().padStart(2, '0') + ':' + 
-                               responseTime.getMinutes().toString().padStart(2, '0');
-        
-        const autoResponse: ChatMessage = {
-          id: crypto.randomUUID(),
-          content: autoResponses[responseIdx],
-          timestamp: responseTimestamp,
-          type: "received",
-          chatId: activeChat
-        };
-        
-        await db.add('messages', autoResponse);
-        setMessages(prev => [...prev, autoResponse]);
-        
-        // Atualiza o chat com a mensagem de resposta
-        if (updatedChat) {
-          const chatWithResponse = {
-            ...updatedChat,
-            lastMessage: autoResponses[responseIdx],
-            timestamp: responseTimestamp
-          };
-          await db.update('chats', chatWithResponse);
-          setChats(prev => prev.map(c => c.id === activeChat ? chatWithResponse : c));
-        }
-      }, 1500);
       
       return true;
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível enviar a mensagem",
+        variant: "destructive"
+      });
       return false;
     }
-  };
+  }, [activeChat, chats, toast]);
 
   return {
     chats,
@@ -234,6 +183,9 @@ export function useChats() {
     activeChat,
     setActiveChat,
     sendMessage,
-    loading
+    loading,
+    loadingMessages,
+    loadChats,
+    loadMessages
   };
 }

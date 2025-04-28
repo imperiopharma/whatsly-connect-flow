@@ -1,418 +1,707 @@
 
-# Guia Passo a Passo: Configuração do Backend WhatsApp
+# Guia de Configuração do Backend - WhatsApp Integration
 
-Este guia detalhado explica como configurar o backend do WhatsApp na sua VPS.
+Este documento fornece instruções detalhadas para configurar o servidor backend na sua VPS para integração com o WhatsApp.
 
-## Pré-requisitos
+## Requisitos do Sistema
 
-- Acesso SSH à sua VPS
-- Conhecimentos básicos de linha de comando Linux
-- Domínio configurado (opcional, mas recomendado)
+- VPS com sistema operacional Linux (recomendado Ubuntu 20.04+)
+- Node.js 14+ e NPM 6+
+- Google Chrome ou Chromium instalado
+- Mínimo 2GB de RAM
+- Servidor HTTP (Nginx ou Apache) para proxy reverso (opcional, mas recomendado)
 
-## Passo 1: Preparar a VPS
+## Passo 1: Preparar o Ambiente na VPS
+
+### Instalar Node.js e NPM
 
 ```bash
-# Atualizar o sistema
-sudo apt update && sudo apt upgrade -y
+# Atualizar os repositórios
+sudo apt update
 
 # Instalar Node.js e NPM
 curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
-sudo apt-get install -y nodejs
+sudo apt install -y nodejs
 
-# Verificar instalação
-node -v
-npm -v
-
-# Instalar dependências do Chromium (necessárias para whatsapp-web.js)
-sudo apt-get install -y gconf-service libasound2 libatk1.0-0 libatk-bridge2.0-0 libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgcc1 libgconf-2-4 libgdk-pixbuf2.0-0 libglib2.0-0 libgtk-3-0 libnspr4 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 ca-certificates fonts-liberation libappindicator1 libnss3 lsb-release xdg-utils wget libgbm-dev
+# Verificar a instalação
+node -v  # Deve mostrar v16.x.x
+npm -v   # Deve mostrar 6.x.x ou superior
 ```
 
-## Passo 2: Configurar o Projeto Node.js
+### Instalar o Chromium (necessário para o whatsapp-web.js)
+
+```bash
+sudo apt install -y chromium-browser
+```
+
+## Passo 2: Configurar o Projeto Backend
+
+### Clonar o Repositório (ou criar manualmente)
 
 ```bash
 # Criar diretório para o projeto
-mkdir -p /var/www/whatsapp-api
-cd /var/www/whatsapp-api
+mkdir -p ~/whatsapp-backend
+cd ~/whatsapp-backend
 
-# Inicializar projeto Node.js
+# Iniciar um novo projeto Node.js
 npm init -y
-
-# Instalar dependências principais
-npm install express whatsapp-web.js qrcode dotenv cors helmet socket.io mongoose
 ```
 
-## Passo 3: Criar Estrutura de Arquivos
+### Instalar Dependências
 
 ```bash
-mkdir -p src/{controllers,models,routes,services,websocket,whatsapp}
-touch src/index.js .env README.md
+npm install express cors dotenv whatsapp-web.js express-validator helmet morgan
+npm install nodemon --save-dev
 ```
 
-## Passo 4: Configurar Variáveis de Ambiente
-
-Edite o arquivo `.env`:
-
-```bash
-nano .env
-```
-
-Adicione o seguinte conteúdo:
+### Estrutura de Arquivos Recomendada
 
 ```
-# Configurações do Servidor
+whatsapp-backend/
+├── .env                   # Variáveis de ambiente
+├── server.js              # Ponto de entrada principal
+├── package.json           # Dependências e scripts
+├── src/
+│   ├── config/            # Configurações
+│   │   └── whatsapp.js    # Configuração do WhatsApp
+│   ├── controllers/       # Controladores para rotas
+│   │   ├── whatsapp.js    # Controlador WhatsApp
+│   │   ├── contacts.js    # Controlador de contatos
+│   │   └── chats.js       # Controlador de chats
+│   ├── routes/            # Rotas da API
+│   │   ├── whatsapp.js    # Rotas do WhatsApp
+│   │   ├── contacts.js    # Rotas de contatos
+│   │   └── chats.js       # Rotas de mensagens
+│   ├── models/            # Modelos de dados
+│   ├── middleware/        # Middleware personalizado
+│   └── utils/             # Utilitários
+└── sessions/              # Diretório para sessões do WhatsApp
+```
+
+## Passo 3: Implementar o Servidor
+
+### Configurar o arquivo `.env`
+
+Crie um arquivo `.env` na raiz do projeto:
+
+```
+# Configurações do servidor
 PORT=3000
 NODE_ENV=production
 
-# URLs
-FRONTEND_URL=https://sua-url-do-lovable.app
+# Configurações de segurança
+CORS_ORIGIN=https://url-do-seu-frontend-lovable.app
 
-# Segurança
-JWT_SECRET=seu_token_secreto_aqui
-SESSION_SECRET=outra_chave_secreta_aqui
-
-# Database (opcional)
-# DB_URI=mongodb://localhost:27017/whatsapp-api
+# Configurações do WhatsApp
+WHATSAPP_SESSION_PATH=./sessions
 ```
 
-## Passo 5: Implementar o Código Base
-
-### Arquivo Principal (src/index.js)
-
-```bash
-nano src/index.js
-```
-
-Conteúdo:
+### Criar o arquivo `server.js`
 
 ```javascript
 const express = require('express');
-const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
-const dotenv = require('dotenv');
-const socketIo = require('socket.io');
+const morgan = require('morgan');
+require('dotenv').config();
 
-// Carrega variáveis de ambiente
-dotenv.config();
+// Importar rotas
+const whatsappRoutes = require('./src/routes/whatsapp');
+const contactsRoutes = require('./src/routes/contacts');
+const chatsRoutes = require('./src/routes/chats');
 
-// Importa rotas
-const whatsappRoutes = require('./routes/whatsapp');
-
-// Inicializa app Express
 const app = express();
-const server = http.createServer(app);
-
-// Configura Socket.io
-const io = socketIo(server, {
-  cors: {
-    origin: process.env.FRONTEND_URL,
-    methods: ['GET', 'POST']
-  }
-});
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL,
+  origin: process.env.CORS_ORIGIN,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Inicializa WhatsApp Client
-const WhatsAppClient = require('./whatsapp/client');
-const whatsappClient = new WhatsAppClient(io);
+app.use(morgan('dev'));
 
 // Rotas
-app.use('/whatsapp', whatsappRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/contacts', contactsRoutes);
+app.use('/api/chats', chatsRoutes);
 
 // Rota de teste
-app.get('/', (req, res) => {
-  res.send('WhatsApp API está funcionando!');
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date() });
 });
 
-// Tratamento de erros
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Algo deu errado!');
-});
-
-// Inicia o servidor
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+// Iniciar o servidor
+app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
 
-module.exports = { app, server, io };
+// Gerenciamento de erros não tratados
+process.on('uncaughtException', (error) => {
+  console.error('Erro não tratado:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Promessa rejeitada não tratada:', reason);
+});
 ```
 
-### Cliente WhatsApp (src/whatsapp/client.js)
+## Passo 4: Implementar a Integração com WhatsApp
 
-```bash
-nano src/whatsapp/client.js
-```
-
-Conteúdo:
+### Criar a Configuração do WhatsApp (`src/config/whatsapp.js`)
 
 ```javascript
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode');
+const path = require('path');
 
-class WhatsAppClient {
-  constructor(io) {
-    this.io = io;
-    this.client = null;
-    this.qrCode = null;
-    this.isReady = false;
-    this.number = null;
-    this.initializeClient();
-  }
+// Configuração do cliente WhatsApp
+const createWhatsAppClient = () => {
+  return new Client({
+    authStrategy: new LocalAuth({
+      dataPath: path.resolve(process.env.WHATSAPP_SESSION_PATH || './sessions')
+    }),
+    puppeteer: {
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu'
+      ]
+    }
+  });
+};
 
-  initializeClient() {
-    this.client = new Client({
-      authStrategy: new LocalAuth({
-        dataPath: './whatsapp-sessions/'
-      }),
-      puppeteer: {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-gpu'
-        ]
-      }
+module.exports = { createWhatsAppClient };
+```
+
+### Implementar Controlador WhatsApp (`src/controllers/whatsapp.js`)
+
+```javascript
+const { createWhatsAppClient } = require('../config/whatsapp');
+
+let whatsappClient = null;
+let qrCode = null;
+let connectionStatus = 'disconnected'; // 'disconnected', 'connecting', 'connected'
+let connectedNumber = null;
+
+// Inicializar o cliente WhatsApp
+const initializeWhatsApp = () => {
+  if (!whatsappClient) {
+    whatsappClient = createWhatsAppClient();
+    
+    whatsappClient.on('qr', (qr) => {
+      qrCode = qr;
+      connectionStatus = 'connecting';
+      console.log('QR Code gerado:', qr);
     });
-
-    this.client.on('qr', (qr) => {
-      console.log('QR Code recebido');
-      this.qrCode = qr;
+    
+    whatsappClient.on('ready', () => {
+      connectionStatus = 'connected';
+      whatsappClient.getState().then(state => console.log('Estado da conexão:', state));
       
-      // Converte QR para base64
-      qrcode.toDataURL(qr, (err, url) => {
-        if (!err) {
-          // Remove o prefixo data:image/png;base64,
-          const base64Qr = url.replace(/^data:image\/png;base64,/, '');
-          this.io.emit('whatsapp:qr', base64Qr);
-        }
+      // Obter o número conectado
+      whatsappClient.getInfo().then(info => {
+        connectedNumber = info.wid.user;
+        console.log('Número conectado:', connectedNumber);
       });
-    });
-
-    this.client.on('ready', async () => {
-      this.isReady = true;
-      this.qrCode = null;
-      
-      try {
-        const info = await this.client.getWid();
-        this.number = info.user;
-      } catch (error) {
-        console.error('Erro ao obter número:', error);
-      }
       
       console.log('Cliente WhatsApp pronto!');
-      this.io.emit('whatsapp:status', { status: 'connected', number: this.number });
     });
-
-    this.client.on('disconnected', (reason) => {
-      this.isReady = false;
-      this.qrCode = null;
-      this.number = null;
+    
+    whatsappClient.on('disconnected', (reason) => {
+      connectionStatus = 'disconnected';
+      connectedNumber = null;
       console.log('Cliente WhatsApp desconectado:', reason);
-      this.io.emit('whatsapp:status', { status: 'disconnected', reason });
-    });
-
-    this.client.on('message', async (msg) => {
-      console.log('Mensagem recebida:', msg.body);
       
-      // Emite a mensagem recebida para o frontend
-      if (!msg.isStatus && !msg.fromMe) {
-        const chat = await msg.getChat();
-        
-        this.io.emit('whatsapp:message', {
-          id: msg.id.id,
-          content: msg.body,
-          timestamp: new Date().toISOString(),
-          type: 'received',
-          chatId: msg.from,
-          contact: {
-            id: msg.from,
-            name: chat.name || msg.from
-          }
-        });
-      }
+      // Reiniciar o cliente após desconexão
+      whatsappClient = null;
+      qrCode = null;
     });
-
-    // Inicializa cliente
-    this.client.initialize().catch(err => {
-      console.error('Erro ao inicializar cliente WhatsApp:', err);
+    
+    whatsappClient.initialize().catch(err => {
+      console.error('Erro ao inicializar o cliente WhatsApp:', err);
+      connectionStatus = 'disconnected';
+      whatsappClient = null;
     });
   }
+};
 
-  async getStatus() {
-    return {
-      status: this.isReady ? 'connected' : this.qrCode ? 'connecting' : 'disconnected',
-      qrCode: this.qrCode,
-      number: this.number
-    };
-  }
-
-  async disconnect() {
-    if (this.client) {
-      await this.client.destroy();
-      this.isReady = false;
-      this.qrCode = null;
-      this.number = null;
-      return { success: true, message: 'Desconectado com sucesso' };
+// Controlador para iniciar a conexão
+const connect = async (req, res) => {
+  try {
+    // Se já estiver conectado, retorna o status atual
+    if (connectionStatus === 'connected') {
+      return res.status(200).json({
+        connected: true,
+        number: connectedNumber
+      });
     }
-    return { success: false, message: 'Cliente não inicializado' };
-  }
-
-  async reconnect() {
-    await this.disconnect();
-    this.initializeClient();
-    return { success: true, message: 'Reconectando...' };
-  }
-
-  async sendMessage(to, message) {
-    if (!this.isReady) {
-      throw new Error('Cliente WhatsApp não está conectado');
+    
+    // Se estiver em processo de conexão e temos um QR code, retorna o QR
+    if (connectionStatus === 'connecting' && qrCode) {
+      return res.status(200).json({
+        connected: false,
+        qrCode: qrCode
+      });
     }
-
-    try {
-      // Formata o número se necessário
-      const formattedNumber = to.includes('@c.us') ? to : `${to}@c.us`;
-      
-      // Envia a mensagem
-      const response = await this.client.sendMessage(formattedNumber, message);
-      
-      return {
-        success: true,
-        messageId: response.id.id,
-        timestamp: new Date().toISOString()
-      };
-    } catch (error) {
-      console.error('Erro ao enviar mensagem:', error);
-      throw error;
-    }
+    
+    // Caso contrário, inicia uma nova conexão
+    initializeWhatsApp();
+    
+    // Espera um pouco para dar tempo de gerar o QR code
+    setTimeout(() => {
+      res.status(200).json({
+        connected: connectionStatus === 'connected',
+        qrCode: qrCode,
+        number: connectedNumber
+      });
+    }, 2000);
+  } catch (error) {
+    console.error('Erro ao conectar WhatsApp:', error);
+    res.status(500).json({ error: 'Falha ao conectar com o WhatsApp' });
   }
-}
+};
 
-module.exports = WhatsAppClient;
+// Controlador para verificar o status
+const getStatus = async (req, res) => {
+  res.status(200).json({
+    connected: connectionStatus === 'connected',
+    status: connectionStatus,
+    number: connectedNumber
+  });
+};
+
+// Controlador para obter o QR code atual
+const getQrCode = async (req, res) => {
+  if (!qrCode) {
+    return res.status(404).json({ error: 'QR Code não disponível' });
+  }
+  
+  res.status(200).json({
+    qrCode: qrCode
+  });
+};
+
+// Controlador para desconectar
+const disconnect = async (req, res) => {
+  try {
+    if (whatsappClient) {
+      await whatsappClient.logout();
+      whatsappClient.destroy();
+      whatsappClient = null;
+      qrCode = null;
+      connectionStatus = 'disconnected';
+      connectedNumber = null;
+    }
+    
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Erro ao desconectar WhatsApp:', error);
+    res.status(500).json({ error: 'Falha ao desconectar do WhatsApp' });
+  }
+};
+
+module.exports = {
+  connect,
+  getStatus,
+  getQrCode,
+  disconnect,
+  getClient: () => whatsappClient
+};
 ```
 
-### Rotas WhatsApp (src/routes/whatsapp.js)
-
-```bash
-nano src/routes/whatsapp.js
-```
-
-Conteúdo:
+### Implementar Rotas WhatsApp (`src/routes/whatsapp.js`)
 
 ```javascript
 const express = require('express');
-const WhatsAppClient = require('../whatsapp/client');
 const router = express.Router();
+const whatsappController = require('../controllers/whatsapp');
 
-// Referência para o cliente WhatsApp é passada aqui
-let whatsappClient;
-
-// Inicializa a referência do cliente WhatsApp
-router.use((req, res, next) => {
-  whatsappClient = req.app.get('whatsappClient');
-  if (!whatsappClient) {
-    return res.status(500).json({ success: false, message: 'WhatsApp client not initialized' });
-  }
-  next();
-});
-
-// Rota para conectar
-router.post('/connect', async (req, res) => {
-  try {
-    whatsappClient.reconnect();
-    res.json({ success: true, message: 'Iniciando conexão, aguarde o QR Code' });
-  } catch (error) {
-    console.error('Erro ao conectar:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Rota para desconectar
-router.post('/disconnect', async (req, res) => {
-  try {
-    const result = await whatsappClient.disconnect();
-    res.json(result);
-  } catch (error) {
-    console.error('Erro ao desconectar:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Rota para obter status
-router.get('/status', async (req, res) => {
-  try {
-    const status = await whatsappClient.getStatus();
-    res.json(status);
-  } catch (error) {
-    console.error('Erro ao obter status:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Rota para enviar mensagem
-router.post('/send', async (req, res) => {
-  try {
-    const { to, message } = req.body;
-    
-    if (!to || !message) {
-      return res.status(400).json({ success: false, message: 'Destinatário e mensagem são obrigatórios' });
-    }
-    
-    const result = await whatsappClient.sendMessage(to, message);
-    res.json(result);
-  } catch (error) {
-    console.error('Erro ao enviar mensagem:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
+router.post('/connect', whatsappController.connect);
+router.get('/status', whatsappController.getStatus);
+router.get('/qrcode', whatsappController.getQrCode);
+router.post('/disconnect', whatsappController.disconnect);
 
 module.exports = router;
 ```
 
-## Passo 6: Configure PM2 para Gerenciar o Processo
+## Passo 5: Implementar Endpoints de Contatos e Chats
+
+### Controlador de Contatos (`src/controllers/contacts.js`)
+
+```javascript
+const whatsappController = require('./whatsapp');
+
+// Obter todos os contatos
+const getAllContacts = async (req, res) => {
+  try {
+    const client = whatsappController.getClient();
+    
+    if (!client) {
+      return res.status(400).json({ error: 'WhatsApp não está conectado' });
+    }
+    
+    const contacts = await client.getContacts();
+    
+    // Filtrar e transformar para o formato esperado pelo frontend
+    const formattedContacts = contacts
+      .filter(contact => contact.name && contact.isMyContact)
+      .map(contact => ({
+        id: contact.id._serialized,
+        name: contact.name || contact.pushname || 'Desconhecido',
+        phone: contact.number || '',
+        lastContact: new Date().toISOString().split('T')[0], // Data atual como fallback
+        tags: [], // Tags vazias por padrão
+        status: 'active'
+      }));
+    
+    res.status(200).json(formattedContacts);
+  } catch (error) {
+    console.error('Erro ao obter contatos:', error);
+    res.status(500).json({ error: 'Falha ao obter contatos' });
+  }
+};
+
+// Sincronizar contatos do WhatsApp
+const syncContacts = async (req, res) => {
+  try {
+    const client = whatsappController.getClient();
+    
+    if (!client) {
+      return res.status(400).json({ error: 'WhatsApp não está conectado' });
+    }
+    
+    await client.getContacts();
+    
+    res.status(200).json({
+      success: true,
+      message: 'Contatos sincronizados com sucesso'
+    });
+  } catch (error) {
+    console.error('Erro ao sincronizar contatos:', error);
+    res.status(500).json({ error: 'Falha ao sincronizar contatos' });
+  }
+};
+
+// Criar um novo contato
+const createContact = async (req, res) => {
+  try {
+    const { name, phone, tags } = req.body;
+    
+    if (!name || !phone) {
+      return res.status(400).json({ error: 'Nome e telefone são obrigatórios' });
+    }
+    
+    // Gerar ID único
+    const id = Date.now().toString();
+    
+    const newContact = {
+      id,
+      name,
+      phone,
+      lastContact: new Date().toISOString().split('T')[0],
+      tags: tags || [],
+      status: 'active'
+    };
+    
+    res.status(201).json(newContact);
+  } catch (error) {
+    console.error('Erro ao criar contato:', error);
+    res.status(500).json({ error: 'Falha ao criar contato' });
+  }
+};
+
+// Atualizar um contato existente
+const updateContact = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, tags } = req.body;
+    
+    if (!name && !phone && !tags) {
+      return res.status(400).json({ error: 'Nenhum dado fornecido para atualização' });
+    }
+    
+    // Simulamos o contato atualizado
+    // Em uma implementação real, você buscaria do banco de dados
+    const updatedContact = {
+      id,
+      name: name || 'Nome desconhecido',
+      phone: phone || '000000000',
+      lastContact: new Date().toISOString().split('T')[0],
+      tags: tags || [],
+      status: 'active'
+    };
+    
+    res.status(200).json(updatedContact);
+  } catch (error) {
+    console.error(`Erro ao atualizar contato ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Falha ao atualizar contato' });
+  }
+};
+
+// Excluir um contato
+const deleteContact = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Em uma implementação real, você removeria do banco de dados
+    
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error(`Erro ao excluir contato ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Falha ao excluir contato' });
+  }
+};
+
+module.exports = {
+  getAllContacts,
+  syncContacts,
+  createContact,
+  updateContact,
+  deleteContact
+};
+```
+
+### Rotas de Contatos (`src/routes/contacts.js`)
+
+```javascript
+const express = require('express');
+const router = express.Router();
+const contactsController = require('../controllers/contacts');
+
+router.get('/', contactsController.getAllContacts);
+router.post('/', contactsController.createContact);
+router.put('/:id', contactsController.updateContact);
+router.delete('/:id', contactsController.deleteContact);
+router.post('/sync', contactsController.syncContacts);
+
+module.exports = router;
+```
+
+### Controlador de Chats (`src/controllers/chats.js`)
+
+```javascript
+const whatsappController = require('./whatsapp');
+
+// Obter todas as conversas
+const getAllChats = async (req, res) => {
+  try {
+    const client = whatsappController.getClient();
+    
+    if (!client) {
+      return res.status(400).json({ error: 'WhatsApp não está conectado' });
+    }
+    
+    const chats = await client.getChats();
+    
+    // Filtrar e transformar para o formato esperado pelo frontend
+    const formattedChats = await Promise.all(chats.map(async (chat) => {
+      // Tenta obter a última mensagem
+      let lastMsg = '';
+      let timestamp = new Date().toISOString();
+      
+      try {
+        const messages = await chat.fetchMessages({ limit: 1 });
+        if (messages && messages.length > 0) {
+          lastMsg = messages[0].body;
+          timestamp = messages[0].timestamp ? new Date(messages[0].timestamp * 1000).toISOString() : timestamp;
+        }
+      } catch (e) {
+        console.error('Erro ao buscar mensagens:', e);
+      }
+      
+      return {
+        id: chat.id._serialized,
+        name: chat.name || 'Chat',
+        phone: chat.id.user || '',
+        lastMessage: lastMsg || 'Nenhuma mensagem',
+        timestamp: timestamp.split('T')[1].substring(0, 5), // Formato HH:MM
+        unread: chat.unreadCount || 0,
+        status: 'active'
+      };
+    }));
+    
+    res.status(200).json(formattedChats);
+  } catch (error) {
+    console.error('Erro ao obter conversas:', error);
+    res.status(500).json({ error: 'Falha ao obter conversas' });
+  }
+};
+
+// Obter mensagens de uma conversa específica
+const getChatMessages = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const client = whatsappController.getClient();
+    
+    if (!client) {
+      return res.status(400).json({ error: 'WhatsApp não está conectado' });
+    }
+    
+    const chat = await client.getChatById(id);
+    if (!chat) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+    
+    const messages = await chat.fetchMessages({ limit: 50 });
+    
+    // Formatar as mensagens para o frontend
+    const formattedMessages = messages.map(msg => ({
+      id: msg.id._serialized,
+      content: msg.body,
+      timestamp: new Date(msg.timestamp * 1000).toISOString().split('T')[1].substring(0, 5), // Formato HH:MM
+      type: msg.fromMe ? 'sent' : 'received',
+      chatId: id
+    }));
+    
+    res.status(200).json(formattedMessages);
+  } catch (error) {
+    console.error(`Erro ao obter mensagens da conversa ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Falha ao obter mensagens' });
+  }
+};
+
+// Enviar uma mensagem
+const sendMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body;
+    
+    if (!content) {
+      return res.status(400).json({ error: 'Conteúdo da mensagem é obrigatório' });
+    }
+    
+    const client = whatsappController.getClient();
+    
+    if (!client) {
+      return res.status(400).json({ error: 'WhatsApp não está conectado' });
+    }
+    
+    // Enviar a mensagem
+    const msg = await client.sendMessage(id, content);
+    
+    // Criar objeto de resposta
+    const now = new Date();
+    const newMessage = {
+      id: msg.id._serialized,
+      content: content,
+      timestamp: now.toTimeString().substring(0, 5), // Formato HH:MM
+      type: 'sent',
+      chatId: id
+    };
+    
+    res.status(201).json(newMessage);
+  } catch (error) {
+    console.error(`Erro ao enviar mensagem para ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Falha ao enviar mensagem' });
+  }
+};
+
+// Marcar conversa como lida
+const markChatAsRead = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const client = whatsappController.getClient();
+    
+    if (!client) {
+      return res.status(400).json({ error: 'WhatsApp não está conectado' });
+    }
+    
+    const chat = await client.getChatById(id);
+    if (!chat) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+    
+    await chat.sendSeen();
+    
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error(`Erro ao marcar conversa ${req.params.id} como lida:`, error);
+    res.status(500).json({ error: 'Falha ao marcar conversa como lida' });
+  }
+};
+
+module.exports = {
+  getAllChats,
+  getChatMessages,
+  sendMessage,
+  markChatAsRead
+};
+```
+
+### Rotas de Chats (`src/routes/chats.js`)
+
+```javascript
+const express = require('express');
+const router = express.Router();
+const chatsController = require('../controllers/chats');
+
+router.get('/', chatsController.getAllChats);
+router.get('/:id/messages', chatsController.getChatMessages);
+router.post('/:id/messages', chatsController.sendMessage);
+router.put('/:id/read', chatsController.markChatAsRead);
+
+module.exports = router;
+```
+
+## Passo 6: Configurar Scripts de Inicialização
+
+Atualize o arquivo `package.json` para incluir scripts úteis:
+
+```json
+{
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "start:pm2": "pm2 start server.js --name whatsapp-backend"
+  }
+}
+```
+
+## Passo 7: Manter o Servidor Rodando com PM2
+
+Para manter seu servidor rodando mesmo após desconexões ou reinicializações:
 
 ```bash
 # Instalar PM2 globalmente
-sudo npm install -g pm2
+npm install -g pm2
 
-# Iniciar aplicação com PM2
-cd /var/www/whatsapp-api
-pm2 start src/index.js --name whatsapp-api
+# Iniciar o servidor com PM2
+pm2 start server.js --name whatsapp-backend
 
-# Configurar PM2 para iniciar automaticamente após reboot
+# Configurar para iniciar após reiniciar o sistema
 pm2 startup
 pm2 save
+
+# Outros comandos úteis:
+pm2 status              # Ver status de todos os aplicativos
+pm2 logs whatsapp-backend     # Ver logs do aplicativo
+pm2 restart whatsapp-backend  # Reiniciar o aplicativo
+pm2 stop whatsapp-backend     # Parar o aplicativo
 ```
 
-## Passo 7: Configurar Nginx como Proxy Reverso (Opcional)
+## Passo 8: Configurar Nginx como Proxy Reverso (Opcional, mas Recomendado)
 
 ```bash
 # Instalar Nginx
-sudo apt install -y nginx
+sudo apt install nginx
 
-# Criar configuração para o site
-sudo nano /etc/nginx/sites-available/whatsapp-api
+# Configurar site
+sudo nano /etc/nginx/sites-available/whatsapp-backend
 ```
 
-Adicione a seguinte configuração:
+Conteúdo do arquivo:
 
-```nginx
+```
 server {
     listen 80;
-    server_name seu-dominio.com;  # Substitua pelo seu domínio ou IP
+    server_name seu-dominio.com;
 
     location / {
         proxy_pass http://localhost:3000;
@@ -421,139 +710,112 @@ server {
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
 
-Ative a configuração:
+Ativar o site e reiniciar Nginx:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/whatsapp-api /etc/nginx/sites-enabled/
-sudo nginx -t  # Verifica se há erros na configuração
+sudo ln -s /etc/nginx/sites-available/whatsapp-backend /etc/nginx/sites-enabled/
+sudo nginx -t  # Testar a configuração
 sudo systemctl restart nginx
 ```
 
-## Passo 8: Configurar SSL com Let's Encrypt (Opcional, mas Recomendado)
+## Configurar HTTPS com Certbot (Recomendado para Produção)
 
 ```bash
 # Instalar Certbot
-sudo apt install -y certbot python3-certbot-nginx
+sudo apt install certbot python3-certbot-nginx
 
-# Obter certificado SSL
+# Obter certificado SSL e configurar HTTPS
 sudo certbot --nginx -d seu-dominio.com
 
-# Renovação automática já é configurada pelo Certbot
+# Renovação automática (já configurado pelo Certbot)
 ```
 
-## Passo 9: Configurar Firewall
+## Solução de Problemas Comuns
+
+### Problemas com o Puppeteer/Chromium
+
+Se estiver enfrentando problemas com o Puppeteer ou Chromium:
 
 ```bash
-# Instalar UFW se não estiver instalado
-sudo apt install -y ufw
-
-# Permitir SSH, HTTP e HTTPS
-sudo ufw allow ssh
-sudo ufw allow http
-sudo ufw allow https
-
-# Ativar firewall
-sudo ufw enable
-
-# Verificar status
-sudo ufw status
+# Instalar dependências adicionais do Chromium
+sudo apt install -y gconf-service libgbm-dev libasound2 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgcc1 libgconf-2-4 libgdk-pixbuf2.0-0 libglib2.0-0 libgtk-3-0 libnspr4 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 ca-certificates fonts-liberation libappindicator1 libnss3 lsb-release xdg-utils wget
 ```
 
-## Passo 10: Atualizar o Frontend para Conectar ao Backend
+### Erros de Memória
 
-Atualize o hook `useWhatsAppConnection.ts` no frontend para apontar para seu backend:
+Se o Node.js estiver saindo com erros de memória:
 
-```typescript
-// No arquivo src/hooks/useWhatsAppConnection.ts
-// Substitua a URL do backend pela URL do seu servidor
+1. Aumente o limite de memória:
+   ```bash
+   NODE_OPTIONS=--max-old-space-size=4096 npm start
+   ```
 
-export function useWhatsAppConnection() {
-  // ... código existente
+2. Ou adicione ao script em package.json:
+   ```json
+   "scripts": {
+     "start": "node --max-old-space-size=4096 server.js"
+   }
+   ```
 
-  const connect = async () => {
-    try {
-      setState(prev => ({ ...prev, status: 'connecting', error: null }));
-      
-      // URL do seu backend na VPS
-      const response = await fetch('https://seu-dominio.com/whatsapp/connect', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
-      const data = await response.json();
-      
-      if (data.qrCode) {
-        setState(prev => ({ ...prev, qrCode: data.qrCode }));
-      }
-    } catch (error) {
-      // ... tratamento de erro
-    }
-  };
+### Logs para Depuração
 
-  const disconnect = async () => {
-    try {
-      // URL do seu backend na VPS
-      await fetch('https://seu-dominio.com/whatsapp/disconnect', {
-        method: 'POST',
-      });
-      setState({
-        status: 'disconnected',
-        qrCode: null,
-        number: null,
-        error: null
-      });
-      toast({
-        title: "Desconectado",
-        description: "WhatsApp desconectado com sucesso"
-      });
-    } catch (error) {
-      // ... tratamento de erro
-    }
-  };
-
-  // ... resto do código
-}
-```
-
-## Passo 11: Teste e Solução de Problemas
-
-### Verificar Logs do Servidor
+Implemente logs detalhados para depurar problemas:
 
 ```bash
-pm2 logs whatsapp-api
+# Instalar winston para logs avançados
+npm install winston
+
+# Criar um arquivo de log para referência futura
+mkdir -p logs
+touch logs/whatsapp.log
 ```
 
-### Verificar Conexão
+Crie um logger em `src/utils/logger.js`:
 
-Acesse seu frontend e tente conectar ao WhatsApp. Monitore os logs para identificar quaisquer problemas.
+```javascript
+const winston = require('winston');
 
-### Problemas Comuns e Soluções
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: 'logs/whatsapp.log' })
+  ]
+});
 
-1. **Erro de CORS**:
-   - Verifique se a URL do frontend está corretamente configurada no backend
-   - Certifique-se de que os cabeçalhos CORS estão corretos
+module.exports = logger;
+```
 
-2. **Erro ao gerar QR Code**:
-   - Verifique se todas as dependências do Puppeteer estão instaladas
-   - Aumente a memória disponível na VPS
+Use o logger em vez de `console.log`:
 
-3. **WhatsApp não conecta**:
-   - Verifique as configurações de rede da VPS
-   - Certifique-se de que o WhatsApp Web está funcionando no navegador
+```javascript
+const logger = require('../utils/logger');
 
-## Suporte
+// Em vez de console.log
+logger.info('Servidor iniciado');
+logger.error('Erro ao processar', error);
+```
 
-Se você encontrar problemas durante a configuração, verifique os logs do servidor e consulte a documentação das bibliotecas utilizadas.
+## Próximos Passos
+
+Após configurar o backend:
+
+1. Atualize o arquivo `src/config/api.ts` no frontend para apontar para seu backend
+2. Teste a conexão com o WhatsApp escaneando o QR Code
+3. Implemente recursos adicionais como:
+   - Autenticação de usuários
+   - Mensagens em massa
+   - Templates de mensagens
+   - Integração com outros serviços
 
 ---
 
-© 2024 [Seu Nome/Empresa]. Todos os direitos reservados.
+Para mais informações sobre a biblioteca whatsapp-web.js, consulte a [documentação oficial](https://wwebjs.dev/).
