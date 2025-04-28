@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -26,7 +25,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     },
     { 
       name: "Conversas", 
-      path: "/conversations", 
+      path: "/chats", 
       icon: <MessageCircle className="h-5 w-5" /> 
     },
     { 
