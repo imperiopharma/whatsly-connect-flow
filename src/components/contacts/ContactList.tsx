@@ -1,5 +1,4 @@
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,16 +7,34 @@ import { useContacts } from "@/hooks/useContacts";
 import { useToast } from "@/hooks/use-toast";
 
 export function ContactList() {
-  const { contacts, deleteContact } = useContacts();
+  const { contacts, loading, deleteContact } = useContacts();
   const { toast } = useToast();
 
-  const handleDelete = (id: string) => {
-    deleteContact(id);
-    toast({
-      title: "Contato excluído",
-      description: "O contato foi removido com sucesso."
-    });
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteContact(id);
+      toast({
+        title: "Contato excluído",
+        description: "O contato foi removido com sucesso."
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Não foi possível excluir o contato."
+      });
+    }
   };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Carregando contatos...</CardTitle>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   return (
     <Card>
